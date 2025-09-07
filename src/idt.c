@@ -7,6 +7,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "pic.h"
+
 /* ------- minimal VGA printing (no libc) ------- */
 static volatile uint16_t* const VGA = (uint16_t*)0xB8000;
 static const int W = 80, H = 25;
@@ -42,6 +44,7 @@ static void kputhex64(uint64_t x, uint8_t color) {
 static idt_entry_t idt[256];
 static idt_ptr_t   idtr;
 
+/* EXCEPTIONS */
 extern void isr0(void);  extern void isr1(void);  extern void isr2(void);  extern void isr3(void);
 extern void isr4(void);  extern void isr5(void);  extern void isr6(void);  extern void isr7(void);
 extern void isr8(void);  extern void isr9(void);  extern void isr10(void); extern void isr11(void);
@@ -50,6 +53,20 @@ extern void isr16(void); extern void isr17(void); extern void isr18(void); exter
 extern void isr20(void); extern void isr21(void); extern void isr22(void); extern void isr23(void);
 extern void isr24(void); extern void isr25(void); extern void isr26(void); extern void isr27(void);
 extern void isr28(void); extern void isr29(void); extern void isr30(void); extern void isr31(void);
+
+/* PIC */
+extern void irq32(void); extern void irq33(void); extern void irq34(void); extern void irq35(void);
+extern void irq36(void); extern void irq37(void); extern void irq38(void); extern void irq39(void);
+extern void irq40(void); extern void irq41(void); extern void irq42(void); extern void irq43(void);
+extern void irq44(void); extern void irq45(void); extern void irq46(void); extern void irq47(void);
+
+/* per-IRQ (0..15) callbacks; arg is regs snapshot */
+static void (*irq_handlers[16])(const regs_t*);
+
+void irq_install(int irq, void (*fn)(const regs_t*)) {
+    if (irq >= 0 && irq < 16) irq_handlers[irq] = fn;
+}
+
 
 static void idt_set_gate(int n, void* isr) {
     uint64_t addr = (uint64_t)isr;
@@ -83,13 +100,28 @@ void idt_init(void) {
     };
     for (int i = 0; i < 32; ++i) idt_set_gate(i, (void*)stubs[i]);
 
+    /* IRQs: CPU vectors 32..47 */
+    void (*irqstubs[16])(void) = {
+        irq32,irq33,irq34,irq35,irq36,irq37,irq38,irq39,
+        irq40,irq41,irq42,irq43,irq44,irq45,irq46,irq47
+    };
+    for (int i = 0; i < 16; ++i) idt_set_gate(32+i, (void*)irqstubs[i]);
+
     idtr.limit = (uint16_t)(sizeof(idt) - 1);
     idtr.base  = (uint64_t)&idt[0];
     lidt(&idtr);
 }
 
+void irq_common_handler(const regs_t* r);
+
 /* Called from isr_common in assembly with &regs in rdi */
 void isr_common_handler(const regs_t* r) {
+    /* If it is an IRQ (PIC), do not panic; dispatch instead */
+    if (r->int_no >= 32 && r->int_no <= 47) {
+        irq_common_handler(r);
+        return;
+    }
+
     kclear(0x07); /* grey/black */
     kputs("KERNEL PANIC: CPU exception\n", 0x0C);
 
@@ -107,4 +139,13 @@ void isr_common_handler(const regs_t* r) {
 
     kputs("\nSystem halted.", 0x0C);
     for(;;) { __asm__ __volatile__("hlt"); }
+}
+
+void irq_common_handler(const regs_t* r) {
+    uint64_t vec = r->int_no;
+    if (vec >= 32 && vec <= 47) {
+        int irq = (int)(vec - 32);
+        if (irq_handlers[irq]) irq_handlers[irq](r);
+        pic_send_eoi(irq);
+    }
 }

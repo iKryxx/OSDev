@@ -6,6 +6,8 @@
 #include <stddef.h>
 
 #include "idt.h"
+#include "io.h"
+#include "pic.h"
 
 static volatile uint16_t* const VGA = (uint16_t*)0xB8000;
 static const int VGA_W = 80;
@@ -23,6 +25,22 @@ static void vga_puts_at(const char* s, int row, int col, uint8_t color) {
     }
 }
 
+extern void irq_install(int irq, void (*fn)(const regs_t*));
+extern void isr_common_handler(const regs_t*); // just to satisfy prototype if needed
+extern void irq_common_handler(const regs_t*); // optional
+
+
+static volatile uint64_t g_ticks = 0;
+static void timer_handler(const regs_t* r) {
+    (void)r;
+    ++g_ticks;
+    /* simple, non-blocking: every ~18 ticks update a char */
+    if ((g_ticks % 18) == 0) {
+        static const char spin[4] = {'|','/','-','\\'};
+        VGA[24 * 80 + 0] = ((uint16_t)0x0A << 8) | spin[(g_ticks/18) & 3];
+    }
+}
+
 void kernel_main(void) {
     /* light-grey on black = 0x07 */
     vga_clear(0x07);
@@ -33,12 +51,10 @@ void kernel_main(void) {
     idt_init();
     vga_puts_at("Initializing IDT complete", 2, 0, 0x0A);
 
+    /* remap PIC -> vectors 0x20-0x2F, install timer handler, enable ints */
+    pic_remap(0x20, 0x28);
+    irq_install(0, timer_handler);   /* IRQ0 = timer */
+    sti();
 
-    /* Optional test: trigger an exception to see the panic screen.
-       Uncomment ONE of these lines to test.
-    */
-    //__asm__ __volatile__("ud2");        // invalid opcode (#UD)
-    // __asm__ __volatile__("int3");       // breakpoint (#BP)
-    // volatile int z = 0; int x = 1 / z;  // divide-by-zero (#DE)
     for(;;) { __asm__ __volatile__("hlt"); }
 }

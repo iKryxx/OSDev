@@ -73,7 +73,7 @@ isr_common:
     add rsp, 16                  /* pop [int_no][err_code] */
     iretq
 
-/* 0..31 */
+/* 0..31 (Exceptions) */
 ISR_NOERR 0
 ISR_NOERR 1
 ISR_NOERR 2
@@ -106,3 +106,31 @@ ISR_NOERR 28
 ISR_NOERR 29
 ISR_NOERR 30
 ISR_NOERR 31
+
+/* 32..47 (PIC) */
+/* they have NO CPU error code: push 0 then vector number */
+.macro IRQ num
+    .globl irq\num
+    .type  irq\num, @function
+irq\num:
+    push 0
+    push \num
+    jmp isr_common           /* reuse the same common path & regs layout */
+.endm
+
+IRQ 32   /* IRQ0: PIT timer */
+IRQ 33   /* IRQ1: keyboard */
+IRQ 34   /* IRQ2: cascade to slave */
+IRQ 35
+IRQ 36
+IRQ 37
+IRQ 38
+IRQ 39
+IRQ 40
+IRQ 41
+IRQ 42
+IRQ 43
+IRQ 44
+IRQ 45
+IRQ 46
+IRQ 47
