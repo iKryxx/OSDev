@@ -37,6 +37,8 @@ set(SRCS
         src/pit.c
         src/kbd.c
         src/irq.c
+        src/mb2.c
+        src/pmm.c
 )
 
 add_executable(kernel.elf ${SRCS})

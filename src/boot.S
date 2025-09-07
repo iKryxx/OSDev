@@ -17,6 +17,12 @@ header_end:
 /* ---------- externs ---------- */
     .extern kernel_main
 
+/* ---------- Multiboot 2 Info Pointer ---------- */
+
+    .section .data
+    .align 8
+mb2_info_ptr:   .quad 0
+
 /* ---------- 32-bit entry ---------- */
     .section .text
     .globl _start
@@ -25,6 +31,9 @@ header_end:
     .code32
 _start:
     cli
+
+    /* EBX holds Multiboot2 info pointer (physical) */
+    mov [mb2_info_ptr], ebx
 
     /* Load our GDT (has a 64-bit code segment at selector 0x08) */
     lgdt [gdt_desc32]
@@ -67,6 +76,9 @@ long_mode_entry:
 
     /* Stack */
     lea rsp, [stack_top]
+
+    /* Pass Multiboot2 info pointer in RDI to kernel_main */
+    mov rdi, qword ptr [mb2_info_ptr]
 
     /* Call C kernel */
     call kernel_main

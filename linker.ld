@@ -6,6 +6,7 @@ SECTIONS
 {
   /* Load the kernel at 1 MiB, but we’ll run it in higher half later; for now identity is fine */
   . = 1M;
+  _kernel_start = .;
 
   .text : ALIGN(4K) {
     KEEP(*(.multiboot2))
@@ -15,4 +16,6 @@ SECTIONS
   .rodata : ALIGN(4K) { *(.rodata .rodata.*) }
   .data : ALIGN(4K)   { *(.data .data.*) }
   .bss : ALIGN(4K)    { *(COMMON) *(.bss .bss.*) }
+
+  _kernel_end = .;
 }

@@ -10,10 +10,13 @@
 #include "kbd.h"
 #include "pic.h"
 #include "pit.h"
+#include "pmm.h"
 
 static volatile uint16_t* const VGA = (uint16_t*)0xB8000;
 static const int VGA_W = 80;
 static const int VGA_H = 25;
+
+extern char _kernel_start, _kernel_end;
 
 static void vga_clear(uint8_t color) {
     uint16_t fill = ((uint16_t)color << 8) | ' ';
@@ -61,6 +64,14 @@ static void cursor_retreat() {
 static void putc_at(char c, int row, int col, uint8_t color) {
     VGA[row*VGA_W + col] = ((uint16_t)color<<8) | (uint8_t)c;
 }
+static void print_hex_at(uint64_t x, int row, int col, uint8_t color) {
+    const char* H="0123456789ABCDEF";
+    VGA[row*VGA_W + col++] = ((uint16_t)color<<8) | '0';
+    VGA[row*VGA_W + col++] = ((uint16_t)color<<8) | 'x';
+    for (int i=15;i>=0;i--){
+        VGA[row*VGA_W + col++] = ((uint16_t)color<<8) | H[(x>>(i*4))&0xF];
+    }
+}
 static void print_num_at(uint64_t x, int row, int col, uint8_t color) {
     char tmp[21]; int n=0;
     if (x==0) { putc_at('0', row, col, color); return; }
@@ -75,7 +86,7 @@ static void putchar_cli(char c) {
     cursor_advance();
 }
 
-void kernel_main(void) {
+void kernel_main(uint64_t mb2_info) {
     /* light-grey on black = 0x07 */
     vga_clear(0x07);
     vga_puts_at("Booting Up OS...", 0, 0, 0x0F);
@@ -83,30 +94,20 @@ void kernel_main(void) {
 
     idt_init();
     vga_puts_at("Initializing IDT complete", 2, 0, 0x0A);
+
+    pmm_init(mb2_info, (uintptr_t)&_kernel_start, (uintptr_t)&_kernel_end);
+    vga_puts_at("Initializing PMM complete", 3, 0, 0x0A);
+
     pic_remap(0x20, 0x28);
 
     pit_init(1000);  /* 1 kHz tick */
-    vga_puts_at("Initializing PIT complete", 3, 0, 0x0A);
+    vga_puts_at("Initializing PIT complete", 4, 0, 0x0A);
 
     kbd_init();
-    vga_puts_at("Initializing KBD complete", 4, 0, 0x0A);
-
+    vga_puts_at("Initializing KBD complete", 5, 0, 0x0A);
 
     sti();           /* enable ints */
-
-    uint64_t last_ms = 0;
     for (;;) {
-        /* 1) Update time display once every 50 ms */
-        uint64_t ms = time_ms();
-        if (ms - last_ms >= 50) {
-            last_ms = ms;
-            vga_puts_at("ms: ", 5, 0, 0x0E);
-            print_num_at(ms, 5, 4, 0x0E);
-            vga_puts_at("  ticks: ", 5, 18, 0x0E);
-            print_num_at(pit_ticks(), 5, 27, 0x0E);
-        }
-
-        /* 2) Consume keyboard chars */
         char ch;
         if (kbd_getch_nonblock(&ch)) {
             putchar_cli(ch);
