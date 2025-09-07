@@ -4,10 +4,9 @@
 
 #include "idt.h"
 
-#include <stddef.h>
 #include <stdint.h>
 
-#include "pic.h"
+#include "irq.h"
 
 /* ------- minimal VGA printing (no libc) ------- */
 static volatile uint16_t* const VGA = (uint16_t*)0xB8000;
@@ -112,8 +111,6 @@ void idt_init(void) {
     lidt(&idtr);
 }
 
-void irq_common_handler(const regs_t* r);
-
 /* Called from isr_common in assembly with &regs in rdi */
 void isr_common_handler(const regs_t* r) {
     /* If it is an IRQ (PIC), do not panic; dispatch instead */
@@ -139,13 +136,4 @@ void isr_common_handler(const regs_t* r) {
 
     kputs("\nSystem halted.", 0x0C);
     for(;;) { __asm__ __volatile__("hlt"); }
-}
-
-void irq_common_handler(const regs_t* r) {
-    uint64_t vec = r->int_no;
-    if (vec >= 32 && vec <= 47) {
-        int irq = (int)(vec - 32);
-        if (irq_handlers[irq]) irq_handlers[irq](r);
-        pic_send_eoi(irq);
-    }
 }

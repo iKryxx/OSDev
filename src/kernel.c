@@ -7,7 +7,9 @@
 
 #include "idt.h"
 #include "io.h"
+#include "kbd.h"
 #include "pic.h"
+#include "pit.h"
 
 static volatile uint16_t* const VGA = (uint16_t*)0xB8000;
 static const int VGA_W = 80;
@@ -27,7 +29,6 @@ static void vga_puts_at(const char* s, int row, int col, uint8_t color) {
 
 extern void irq_install(int irq, void (*fn)(const regs_t*));
 extern void isr_common_handler(const regs_t*); // just to satisfy prototype if needed
-extern void irq_common_handler(const regs_t*); // optional
 
 
 static volatile uint64_t g_ticks = 0;
@@ -41,20 +42,76 @@ static void timer_handler(const regs_t* r) {
     }
 }
 
+static int cursor_row = 6, cursor_col = 0;
+static void cursor_advance() {
+    cursor_col++;
+    if (cursor_col > VGA_W - 1) {
+        cursor_col = cursor_row == VGA_H - 1 ? VGA_W : 0;
+        cursor_row = cursor_row + 1 == VGA_H ? VGA_H - 1 : cursor_row + 1;
+    }
+}
+static void cursor_retreat() {
+    cursor_col--;
+    if (cursor_col < 0) {
+        cursor_col = cursor_row == 0 ? 0 : VGA_W - 1;
+        cursor_row = cursor_row - 1 == -1 ? 0 : cursor_row - 1;
+    }
+}
+
+static void putc_at(char c, int row, int col, uint8_t color) {
+    VGA[row*VGA_W + col] = ((uint16_t)color<<8) | (uint8_t)c;
+}
+static void print_num_at(uint64_t x, int row, int col, uint8_t color) {
+    char tmp[21]; int n=0;
+    if (x==0) { putc_at('0', row, col, color); return; }
+    while (x) { tmp[n++] = '0' + (x%10); x/=10; }
+    for (int i=0;i<n;i++) putc_at(tmp[n-1-i], row, col+i, color);
+}
+static void putchar_cli(char c) {
+    if (c=='\n') { cursor_col = 0; if (++cursor_row>=VGA_H) cursor_row=VGA_H-1; return; }
+    if (c=='\b') { cursor_retreat(); putchar_cli(' '); cursor_retreat(); return;}
+    if (c == '\t') {return; /* Not Implemented Yet!*/}
+    VGA[cursor_row*VGA_W + cursor_col] = ((uint16_t)0x0F<<8) | (uint8_t)c;
+    cursor_advance();
+}
+
 void kernel_main(void) {
     /* light-grey on black = 0x07 */
     vga_clear(0x07);
     vga_puts_at("Booting Up OS...", 0, 0, 0x0F);
     vga_puts_at("Transition from GRUB to long mode complete", 1, 0, 0x0A);
 
-    /* --- NEW: set up IDT for exceptions --- */
     idt_init();
     vga_puts_at("Initializing IDT complete", 2, 0, 0x0A);
-
-    /* remap PIC -> vectors 0x20-0x2F, install timer handler, enable ints */
     pic_remap(0x20, 0x28);
-    irq_install(0, timer_handler);   /* IRQ0 = timer */
-    sti();
 
-    for(;;) { __asm__ __volatile__("hlt"); }
+    pit_init(1000);  /* 1 kHz tick */
+    vga_puts_at("Initializing PIT complete", 3, 0, 0x0A);
+
+    kbd_init();
+    vga_puts_at("Initializing KBD complete", 4, 0, 0x0A);
+
+
+    sti();           /* enable ints */
+
+    uint64_t last_ms = 0;
+    for (;;) {
+        /* 1) Update time display once every 50 ms */
+        uint64_t ms = time_ms();
+        if (ms - last_ms >= 50) {
+            last_ms = ms;
+            vga_puts_at("ms: ", 5, 0, 0x0E);
+            print_num_at(ms, 5, 4, 0x0E);
+            vga_puts_at("  ticks: ", 5, 18, 0x0E);
+            print_num_at(pit_ticks(), 5, 27, 0x0E);
+        }
+
+        /* 2) Consume keyboard chars */
+        char ch;
+        if (kbd_getch_nonblock(&ch)) {
+            putchar_cli(ch);
+        } else {
+            __asm__ __volatile__("hlt");  /* sleep until next IRQ */
+        }
+    }
 }

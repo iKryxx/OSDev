@@ -1,7 +1,5 @@
 # OSDev Project
 
-# OSDev Project
-
 A hobby operating system written in **C** and **x86_64 assembly**, built from scratch for educational purposes.  
 Currently bootstraps with a Multiboot2-compliant loader, sets up the GDT and IDT, and handles interrupts through the PIC.
 
