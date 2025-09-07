@@ -1,0 +1,37 @@
+# Build directories
+/build/
+/CMakeFiles/
+/cmake-build-*/
+
+# CMake generated files
+CMakeCache.txt
+Makefile
+*.cmake
+*.ninja
+*.ninja_deps
+*.ninja_log
+
+# Object and binary files
+*.o
+*.a
+*.so
+*.elf
+*.bin
+*.iso
+
+# Logs and dumps
+*.log
+*.dmp
+
+# Assembly dependency files
+*.d
+
+# IDE / editor configs
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Other OS-specific
+.DS_Store
+Thumbs.db
