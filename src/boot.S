@@ -104,6 +104,7 @@ gdt_desc32:
 
 /* ---------- Paging structures (identity map 0..1GiB with 2MiB pages) ---------- */
     .align 4096
+    .global pml4
 pml4:
     .quad pdpt + 0x003
     .fill 511,8,0

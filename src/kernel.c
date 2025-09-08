@@ -8,9 +8,11 @@
 #include "idt.h"
 #include "io.h"
 #include "kbd.h"
+#include "kheap.h"
 #include "pic.h"
 #include "pit.h"
 #include "pmm.h"
+#include "vmm.h"
 
 static volatile uint16_t* const VGA = (uint16_t*)0xB8000;
 static const int VGA_W = 80;
@@ -96,15 +98,24 @@ void kernel_main(uint64_t mb2_info) {
     vga_puts_at("Initializing IDT complete", 2, 0, 0x0A);
 
     pmm_init(mb2_info, (uintptr_t)&_kernel_start, (uintptr_t)&_kernel_end);
-    vga_puts_at("Initializing PMM complete", 3, 0, 0x0A);
+    vmm_init();
+    kheap_init(0);
+    vga_puts_at("Initializing PMM, VMM and KHeap complete", 3, 0, 0x0A);
+
+    //char* s = (char*)kmalloc(64);
+    char* s = NULL;
+    for (int i=0;i<63;i++) s[i] = "hello from kheap! "[i % 20];
+    s[63] = 0;
+    s[70] = '4';
+    vga_puts_at(s, 4, 0, 0x0A);
 
     pic_remap(0x20, 0x28);
 
     pit_init(1000);  /* 1 kHz tick */
-    vga_puts_at("Initializing PIT complete", 4, 0, 0x0A);
+    vga_puts_at("Initializing PIT complete", 5, 0, 0x0A);
 
     kbd_init();
-    vga_puts_at("Initializing KBD complete", 5, 0, 0x0A);
+    vga_puts_at("Initializing KBD complete", 6, 0, 0x0A);
 
     sti();           /* enable ints */
     for (;;) {
